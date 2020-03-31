@@ -19,7 +19,7 @@ args = parser.parse_args()
 
 num_workers = args.workers
 language_code = args.language
-clip_format = 'webm'
+clip_formats = ('webm', 'm4a')
 out_path = 'manifest'
 segments_path = os.path.join(out_path, 'segment_clips')
 merge_clips_threshold = 500  # 500 ms
@@ -69,6 +69,7 @@ def filter_sub_text(str):
 
 def process_clip(clip_file, queue):
     clip_id = os.path.basename(os.path.dirname(clip_file))
+    clip_format = re.sub(r'^.+\.(\w+)$', r'\1', clip_file)
 
     if clip_id in clips_blacklist:
         return []
@@ -180,7 +181,7 @@ def process_clip(clip_file, queue):
 pool = Pool(num_workers)
 manager = Manager()
 queue = manager.Queue()
-clip_files = glob(f'data/**/*.{clip_format}')
+clip_files = [clip for clips in [glob(f'data/**/*.{clip_format}') for clip_format in clip_formats] for clip in clips]
 pbar = tqdm(total=len(clip_files))
 
 

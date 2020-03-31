@@ -3,9 +3,14 @@ from urllib.parse import urlparse, parse_qs
 from vtt_to_srt.__main__ import vtt_to_srt
 import os
 import yaml
+from argparse import ArgumentParser
 
 if __name__ == '__main__':
-    num_tries = 5
+    parser = ArgumentParser()
+    parser.add_argument('--retries', type=int, default=3)
+    args = parser.parse_args()
+
+    num_tries = args.retries
     subtitles_lang = 'iw'
 
     ydl_opts = {
