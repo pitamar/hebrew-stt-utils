@@ -14,6 +14,7 @@ from argparse import ArgumentParser
 parser = ArgumentParser()
 parser.add_argument('--workers', help='Number of processes to run concurrently', type=int, default=1)
 parser.add_argument('--language', help='Number of processes to run concurrently', type=str, default='iw')
+parser.add_argument('--sample-rate', help='A specific output sample rate', type=int, default=None)
 
 args = parser.parse_args()
 
@@ -21,9 +22,11 @@ num_workers = args.workers
 language_code = args.language
 clip_formats = ('webm', 'm4a')
 out_path = 'manifest'
-segments_path = os.path.join(out_path, 'segment_clips')
-merge_clips_threshold = 500  # 500 ms
-max_merge_duration = 5 * 1000   # 5 seconds
+segments_path = os.path.join(out_path, 'segment-clips')
+merge_clips_threshold = 2000  # 2 seconds
+max_merge_duration = 10 * 1000   # 10 seconds
+max_word_count = 50
+output_sample_rate = args.sample_rate
 overwrite = False
 string_blacklist = [
     'כתוביות:',
@@ -64,6 +67,10 @@ def filter_sub_text(str):
     result = re.sub(r"[^אבגדהוזחטיכךלמםנןסעפףצץקרשת' \.,?0-9]", '', result)
     result = re.sub(r'\s+', ' ', result)
     result = result.strip()
+
+    if result == '':
+        return None
+
     return result
 
 
@@ -140,8 +147,13 @@ def process_clip(clip_file, queue):
             if not is_last_subtitle:
                 next_sub = subs[i+1]
                 time_between_subs = next_sub.start.ordinal - sub.end.ordinal
+                word_count = filtered_sub_text.count(' ') + 1
                 new_acc_duration = sub.end.ordinal - acc_sub_start_ms
-                if new_acc_duration < max_merge_duration and time_between_subs < merge_clips_threshold:
+                if (
+                        new_acc_duration <= max_merge_duration and
+                        time_between_subs <= merge_clips_threshold and
+                        word_count <= max_word_count
+                ):
                     continue
 
         if acc_sub_end_ms is not None:
@@ -154,7 +166,16 @@ def process_clip(clip_file, queue):
             sub_segment_path = os.path.join(sub_segment_dir, f'{audio_start_ms}-{audio_end_ms}.flac')
 
             sub_audio = clip_audio[audio_start_ms:audio_end_ms]
-            sub_audio.export(sub_segment_path, format='flac')
+            try:
+                sub_audio.export(parameters=[
+                    '-c:a', 'flac',
+                    '-ac', '1',
+                    '-sample_fmt', 's16',
+                    '-ar', str(output_sample_rate),
+                    sub_segment_path,
+                ])
+            except Exception as e:
+                print(e)
 
             manifest_item = {
                 'text': filtered_sub_text,
