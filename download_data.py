@@ -76,7 +76,7 @@ if __name__ == '__main__':
                             try:
                                 result = ydl.extract_info(url, download=False)
                             except (youtube_dl.utils.ExtractorError, youtube_dl.utils.DownloadError) as e:
-                                log(f'Could not extract video information for {url}:', e)
+                                log(f'Could not extract video information for {url}: {e}')
                                 continue
 
                             if subtitles_lang in result['subtitles']:

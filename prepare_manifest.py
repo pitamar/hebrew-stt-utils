@@ -163,16 +163,17 @@ def process_clip(clip_file, queue):
             audio_end_ms = acc_sub_end_ms + segment_padding['end']
             duration_in_ms = audio_end_ms - audio_start_ms
 
-            sub_segment_path = os.path.join(sub_segment_dir, f'{audio_start_ms}-{audio_end_ms}.flac')
+            sub_segment_file_name = f'{audio_start_ms}-{audio_end_ms}.wav'
 
             sub_audio = clip_audio[audio_start_ms:audio_end_ms]
             try:
+                audio_output_path = os.path.join(sub_segment_dir, sub_segment_file_name)
                 sub_audio.export(parameters=[
-                    '-c:a', 'flac',
+                    # '-c:a', 'wav',
                     '-ac', '1',
                     '-sample_fmt', 's16',
                     '-ar', str(output_sample_rate),
-                    sub_segment_path,
+                    audio_output_path,
                 ])
             except Exception as e:
                 print(e)
@@ -180,7 +181,7 @@ def process_clip(clip_file, queue):
             manifest_item = {
                 'text': filtered_sub_text,
                 'duration': duration_in_ms / 1000,
-                'audio_filepath': sub_segment_path,
+                'audio_filepath': os.path.join(sub_segment_dir_final, sub_segment_file_name),
                 'acc_sub_texts': acc_sub_texts,
             }
 
