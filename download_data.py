@@ -13,7 +13,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     num_tries = args.retries
-    subtitles_lang = 'iw'
+    subtitles_lang = 'en'
 
     ydl_opts = {
         'format': 'bestaudio/best',

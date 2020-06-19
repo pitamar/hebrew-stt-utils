@@ -8,8 +8,12 @@ import json
 from tqdm import tqdm
 from multiprocessing import Pool, Manager, Process
 import yaml
-import time
 from argparse import ArgumentParser
+import torch
+import torchaudio
+from languages import LanguageEnglish, LanguageHebrew
+from subtitles_align import align_subs_by_clip_silences, create_sub_for_silence_points
+from utils import srt_to_audacity_labels
 
 parser = ArgumentParser()
 parser.add_argument('--workers', help='Number of processes to run concurrently', type=int, default=1)
@@ -17,6 +21,7 @@ parser.add_argument('--language', help='Number of processes to run concurrently'
 parser.add_argument('--sample-rate', help='A specific output sample rate', type=int, default=None)
 
 args = parser.parse_args()
+
 
 num_workers = args.workers
 language_code = args.language
@@ -28,11 +33,13 @@ max_merge_duration = 10 * 1000   # 10 seconds
 max_word_count = 50
 output_sample_rate = args.sample_rate
 overwrite = False
-string_blacklist = [
-    'כתוביות:',
-    'תכתוב:',
-    'לשידור:',
-]
+target_sample_rate = 16000
+
+if language_code == 'en':
+    language = LanguageEnglish()
+else:
+    language = LanguageHebrew()
+
 segment_padding = {
     'start': 0,
     'end':   0,
@@ -41,6 +48,8 @@ audio_truncate = {
     'start': 20 * 1000,  # 10 seconds
     'end':   20 * 1000,  # 10 seconds
 }
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 clips_blacklist = []
 if os.path.exists('clips_blacklist.yaml'):
@@ -54,17 +63,17 @@ os.makedirs(out_path, exist_ok=True)
 os.makedirs(segments_path, exist_ok=True)
 
 
-def filter_sub_text(str):
+def filter_sub_text(str, language):
     result = str
 
     # Reject strings with an english letter in it
-    match = re.search(r'[a-zA-Z]', str)
-    if match is not None:
-        return None
+    # match = re.search(r'[a-zA-Z]', str)
+    # if match is not None:
+    #     return None
 
     result = re.sub(r'\(' + r'[^\)]+' r'\)', '', result)  # Remove text in parenthesis
     result = re.sub(r'\s+', ' ', result)
-    result = re.sub(r"[^אבגדהוזחטיכךלמםנןסעפףצץקרשת' \.,?0-9]", '', result)
+    result = language.filter_text(result)
     result = re.sub(r'\s+', ' ', result)
     result = result.strip()
 
@@ -74,7 +83,7 @@ def filter_sub_text(str):
     return result
 
 
-def process_clip(clip_file, queue):
+def process_clip(clip_file, queue, language):
     clip_id = os.path.basename(os.path.dirname(clip_file))
     clip_format = re.sub(r'^.+\.(\w+)$', r'\1', clip_file)
 
@@ -106,7 +115,25 @@ def process_clip(clip_file, queue):
 
     subs = pysrt.open(srt_file)
     clip_audio = AudioSegment.from_file(clip_file, format=clip_format)
-    # wav_audio = AudioSegment.from_wav(clip_file)
+    clip_audio = clip_audio.set_channels(1)
+    clip_sample_rate = clip_audio.frame_rate
+    scale_factor = target_sample_rate / clip_sample_rate
+    clip_audio_tensor = torch.tensor([[clip_audio.get_array_of_samples()]], dtype=torch.float32, device=device)
+    clip_audio_tensor = torch.nn.functional.interpolate(clip_audio_tensor, scale_factor=scale_factor)
+
+    silence_points = align_subs_by_clip_silences(waveform=clip_audio_tensor, sample_rate=target_sample_rate, subs=subs)
+    silence_subs = create_sub_for_silence_points(silence_points, target_sample_rate)
+
+    silence_srt_file = srt_file.replace('.srt', '.silence.srt')
+    silence_subs.save(silence_srt_file)
+
+    aligned_srt_file = srt_file.replace('.srt', '.aligned.srt')
+    subs.save(aligned_srt_file)
+
+    srt_to_audacity_labels(srt_file, srt_file.replace('.srt', '.txt'))
+    srt_to_audacity_labels(aligned_srt_file, aligned_srt_file.replace('.srt', '.txt'))
+    srt_to_audacity_labels(silence_srt_file, silence_srt_file.replace('.srt', '.txt'))
+
     clip_duration_ms = len(clip_audio)
 
     acc_sub_start_ms = None
@@ -119,7 +146,7 @@ def process_clip(clip_file, queue):
         sub_text = sub.text_without_tags
         sub_text = re.sub('&[^&;]{1,8};', '', sub_text)
 
-        if any(x in sub_text for x in string_blacklist):
+        if any(x in sub_text for x in language.blacklist):
             continue
 
         sub_start_ms = sub.start.ordinal
@@ -132,7 +159,7 @@ def process_clip(clip_file, queue):
             continue
 
         acc_sub_texts.append(sub_text)
-        filtered_sub_text = filter_sub_text(' '.join(acc_sub_texts))
+        filtered_sub_text = filter_sub_text(' '.join(acc_sub_texts), language)
 
         # In case subtitle is rejected
         if filtered_sub_text is None:
@@ -150,9 +177,9 @@ def process_clip(clip_file, queue):
                 word_count = filtered_sub_text.count(' ') + 1
                 new_acc_duration = sub.end.ordinal - acc_sub_start_ms
                 if (
-                        new_acc_duration <= max_merge_duration and
-                        time_between_subs <= merge_clips_threshold and
-                        word_count <= max_word_count
+                    new_acc_duration <= max_merge_duration and
+                    time_between_subs <= merge_clips_threshold and
+                    word_count <= max_word_count
                 ):
                     continue
 
@@ -165,16 +192,10 @@ def process_clip(clip_file, queue):
 
             sub_segment_file_name = f'{audio_start_ms}-{audio_end_ms}.wav'
 
-            sub_audio = clip_audio[audio_start_ms:audio_end_ms]
+            sub_audio_tensor = clip_audio_tensor[audio_start_ms:audio_end_ms]
             try:
                 audio_output_path = os.path.join(sub_segment_dir, sub_segment_file_name)
-                sub_audio.export(parameters=[
-                    # '-c:a', 'wav',
-                    '-ac', '1',
-                    '-sample_fmt', 's16',
-                    '-ar', str(output_sample_rate),
-                    audio_output_path,
-                ])
+                torchaudio.save(filepath=audio_output_path, src=sub_audio_tensor, sample_rate=target_sample_rate, precision=16)
             except Exception as e:
                 print(e)
 
@@ -242,8 +263,9 @@ watch_queue_thread.start()
 
 futures = []
 for clip_file in clip_files:
-    future = pool.apply_async(process_clip, [clip_file, queue], callback=update)
-    futures.append(future)
+    # future = pool.apply_async(process_clip, [clip_file, queue], callback=update)
+    # futures.append(future)
+    process_clip(clip_file, queue, language)
 
 pool.close()
 pool.join()
