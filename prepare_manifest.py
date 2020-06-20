@@ -37,8 +37,10 @@ target_sample_rate = 16000
 
 if language_code == 'en':
     language = LanguageEnglish()
-else:
+elif language_code == 'iw':
     language = LanguageHebrew()
+else:
+    raise Exception(f'Unknown language {language_code}')
 
 segment_padding = {
     'start': 0,
@@ -119,20 +121,19 @@ def process_clip(clip_file, queue, language):
     clip_sample_rate = clip_audio.frame_rate
     scale_factor = target_sample_rate / clip_sample_rate
     clip_audio_tensor = torch.tensor([[clip_audio.get_array_of_samples()]], dtype=torch.float32, device=device)
-    clip_audio_tensor = torch.nn.functional.interpolate(clip_audio_tensor, scale_factor=scale_factor)
-
+    clip_audio_tensor = torch.nn.functional.interpolate(clip_audio_tensor, scale_factor=scale_factor, recompute_scale_factor=False)
     silence_points = align_subs_by_clip_silences(waveform=clip_audio_tensor, sample_rate=target_sample_rate, subs=subs)
-    silence_subs = create_sub_for_silence_points(silence_points, target_sample_rate)
+    # silence_subs = create_sub_for_silence_points(silence_points, target_sample_rate)
 
-    silence_srt_file = srt_file.replace('.srt', '.silence.srt')
-    silence_subs.save(silence_srt_file)
-
-    aligned_srt_file = srt_file.replace('.srt', '.aligned.srt')
-    subs.save(aligned_srt_file)
-
-    srt_to_audacity_labels(srt_file, srt_file.replace('.srt', '.txt'))
-    srt_to_audacity_labels(aligned_srt_file, aligned_srt_file.replace('.srt', '.txt'))
-    srt_to_audacity_labels(silence_srt_file, silence_srt_file.replace('.srt', '.txt'))
+    # silence_srt_file = srt_file.replace('.srt', '.silence.srt')
+    # silence_subs.save(silence_srt_file)
+    #
+    # aligned_srt_file = srt_file.replace('.srt', '.aligned.srt')
+    # subs.save(aligned_srt_file)
+    #
+    # srt_to_audacity_labels(srt_file, srt_file.replace('.srt', '.txt'))
+    # srt_to_audacity_labels(aligned_srt_file, aligned_srt_file.replace('.srt', '.txt'))
+    # srt_to_audacity_labels(silence_srt_file, silence_srt_file.replace('.srt', '.txt'))
 
     clip_duration_ms = len(clip_audio)
 
@@ -184,7 +185,7 @@ def process_clip(clip_file, queue, language):
                     continue
 
         if acc_sub_end_ms is not None:
-            filtered_sub_text = filter_sub_text(' '.join(acc_sub_texts))
+            filtered_sub_text = filter_sub_text(' '.join(acc_sub_texts), language)
 
             audio_start_ms = acc_sub_start_ms - segment_padding['start']
             audio_end_ms = acc_sub_end_ms + segment_padding['end']
@@ -192,10 +193,13 @@ def process_clip(clip_file, queue, language):
 
             sub_segment_file_name = f'{audio_start_ms}-{audio_end_ms}.wav'
 
-            sub_audio_tensor = clip_audio_tensor[audio_start_ms:audio_end_ms]
+            audio_start = audio_start_ms * (target_sample_rate // 1000)
+            audio_end = audio_end_ms * (target_sample_rate // 1000)
+
+            sub_audio_tensor = clip_audio_tensor[0, :, audio_start:audio_end] << 16
             try:
                 audio_output_path = os.path.join(sub_segment_dir, sub_segment_file_name)
-                torchaudio.save(filepath=audio_output_path, src=sub_audio_tensor, sample_rate=target_sample_rate, precision=16)
+                torchaudio.save(filepath=audio_output_path, src=sub_audio_tensor.cpu(), sample_rate=target_sample_rate, precision=16)
             except Exception as e:
                 print(e)
 
@@ -263,9 +267,9 @@ watch_queue_thread.start()
 
 futures = []
 for clip_file in clip_files:
-    # future = pool.apply_async(process_clip, [clip_file, queue], callback=update)
-    # futures.append(future)
-    process_clip(clip_file, queue, language)
+    future = pool.apply_async(process_clip, [clip_file, queue, language], callback=update)
+    futures.append(future)
+    # process_clip(clip_file, queue, language)
 
 pool.close()
 pool.join()
