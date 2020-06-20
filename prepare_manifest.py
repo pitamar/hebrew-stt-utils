@@ -15,6 +15,8 @@ from languages import LanguageEnglish, LanguageHebrew
 from subtitles_align import align_subs_by_clip_silences, create_sub_for_silence_points
 from utils import srt_to_audacity_labels
 
+torch.multiprocessing.set_start_method('spawn', force=True)
+
 parser = ArgumentParser()
 parser.add_argument('--workers', help='Number of processes to run concurrently', type=int, default=1)
 parser.add_argument('--language', help='Number of processes to run concurrently', type=str, default='iw')
@@ -225,18 +227,12 @@ def process_clip(clip_file, queue, language):
     return clip_manifest_items
 
 
-pool = Pool(num_workers)
-manager = Manager()
-queue = manager.Queue()
-clip_files = [clip for clips in [glob(f'data/**/*.{clip_format}') for clip_format in clip_formats] for clip in clips]
-pbar = tqdm(total=len(clip_files))
-
-
 def update(*args):
     queue.put({'action': 'increment_bar'})
 
 
-def watch_queue(queue, pbar, num_workers):
+def watch_queue(queue, total, num_workers):
+    pbar = tqdm(total=total)
     worker_description_dict = {}
     completed = 0
 
@@ -262,32 +258,41 @@ def watch_queue(queue, pbar, num_workers):
         pbar.n = completed
 
 
-watch_queue_thread = Process(target=watch_queue, args=[queue, pbar, num_workers])
-watch_queue_thread.start()
 
-futures = []
-for clip_file in clip_files:
-    future = pool.apply_async(process_clip, [clip_file, queue, language], callback=update)
-    futures.append(future)
-    # process_clip(clip_file, queue, language)
+if __name__ == '__main__':
+    pool = Pool(num_workers)
+    manager = Manager()
+    queue = manager.Queue()
+    clip_files = [clip for clips in [glob(f'data/**/*.{clip_format}') for clip_format in clip_formats] for clip in clips]
+    total = len(clip_files)
 
-pool.close()
-pool.join()
 
-queue.put({'action': 'quit'})
-watch_queue_thread.join()
+    watch_queue_thread = Process(target=watch_queue, args=[queue, total, num_workers])
+    watch_queue_thread.start()
 
-manifest = []
-for future in futures:
-    manifest.extend(future.get())
+    futures = []
+    for clip_file in clip_files:
+        future = pool.apply_async(process_clip, [clip_file, queue, language], callback=update)
+        futures.append(future)
+        # process_clip(clip_file, queue, language)
 
-with open(os.path.join(out_path, 'manifest.json'), 'w') as f:
-    json.dump(manifest, f, ensure_ascii=False, indent=True)
+    pool.close()
+    pool.join()
 
-with open(os.path.join(out_path, 'jasper_manifest.json'), 'w') as f:
-    for item in manifest:
-        obj = {k: v for k, v in item.items() if k in ['text', 'duration', 'audio_filepath']}
-        json.dump(obj, f, ensure_ascii=False)
-        f.write('\n')
+    queue.put({'action': 'quit'})
+    watch_queue_thread.join()
 
-print('Done')
+    manifest = []
+    for future in futures:
+        manifest.extend(future.get())
+
+    with open(os.path.join(out_path, 'manifest.json'), 'w') as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=True)
+
+    with open(os.path.join(out_path, 'jasper_manifest.json'), 'w') as f:
+        for item in manifest:
+            obj = {k: v for k, v in item.items() if k in ['text', 'duration', 'audio_filepath']}
+            json.dump(obj, f, ensure_ascii=False)
+            f.write('\n')
+
+    print('Done')
