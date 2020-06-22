@@ -10,10 +10,13 @@ from utils import suppress_stdout
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--retries', type=int, default=3)
+    parser.add_argument('--lang', type=str, default='en')
+    parser.add_argument('--proxy', type=str, default=None)
     args = parser.parse_args()
 
     num_tries = args.retries
-    subtitles_lang = 'en'
+    subtitles_lang = args.lang
+    proxy = args.proxy
 
     ydl_opts = {
         'format': 'bestaudio/best',
@@ -32,6 +35,7 @@ if __name__ == '__main__':
         # 'debug_printtraffic': True,
         'socket_timeout': 10,
         'quiet': True,
+        'proxy': proxy,
     }
 
     with open('inputs.yaml') as f:
