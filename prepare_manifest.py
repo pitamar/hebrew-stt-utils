@@ -13,6 +13,9 @@ import torch
 import torchaudio
 from languages import LanguageEnglish, LanguageHebrew
 from subtitles_align import align_subs_by_clip_silences, create_sub_for_silence_points
+import pynvml
+import traceback
+import time
 from utils import srt_to_audacity_labels
 
 torch.multiprocessing.set_start_method('spawn', force=True)
@@ -53,8 +56,6 @@ audio_truncate = {
     'end':   20 * 1000,  # 10 seconds
 }
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
 clips_blacklist = []
 if os.path.exists('clips_blacklist.yaml'):
     with open('clips_blacklist.yaml') as f:
@@ -89,6 +90,23 @@ def filter_sub_text(str, language):
 
 def process_clip(clip_file, queue, language):
     try:
+        clip_audio_tensor = None
+        if torch.cuda.is_available():
+            pynvml.nvmlInit()
+            cuda_devices = [
+                {
+                    'name': f'cuda:{i}',
+                    'used_memory': pynvml.nvmlDeviceGetMemoryInfo(pynvml.nvmlDeviceGetHandleByIndex(i)).used,
+                } for i in range(torch.cuda.device_count())
+            ]
+            cuda_devices.sort(key=lambda d: d['used_memory'])
+            lowest_memory_device = cuda_devices[0]
+            device_name = lowest_memory_device['name']
+        else:
+            device_name = 'cpu'
+
+        device = torch.device(device_name)
+
         clip_id = os.path.basename(os.path.dirname(clip_file))
         clip_format = re.sub(r'^.+\.(\w+)$', r'\1', clip_file)
 
@@ -107,7 +125,7 @@ def process_clip(clip_file, queue, language):
                 clip_manifest = json.load(f)
                 return clip_manifest
 
-        queue.put({'action': 'set_description', 'pid': os.getpid(), 'description': clip_id})
+        queue.put({'action': 'set_description', 'pid': os.getpid(), 'description': f'{device_name} {clip_id}'})
 
         sub_segment_dir = sub_segment_dir_final + '.tmp'
         if os.path.exists(sub_segment_dir):
@@ -125,7 +143,7 @@ def process_clip(clip_file, queue, language):
         scale_factor = target_sample_rate / clip_sample_rate
         clip_audio_tensor = torch.tensor([[clip_audio.get_array_of_samples()]], dtype=torch.float32, device=device)
         clip_audio_tensor = torch.nn.functional.interpolate(clip_audio_tensor, scale_factor=scale_factor, recompute_scale_factor=False)
-        silence_points = align_subs_by_clip_silences(waveform=clip_audio_tensor, sample_rate=target_sample_rate, subs=subs)
+        silence_points = align_subs_by_clip_silences(waveform=clip_audio_tensor, sample_rate=target_sample_rate, subs=subs, device=device)
         # silence_subs = create_sub_for_silence_points(silence_points, target_sample_rate)
 
         # silence_srt_file = srt_file.replace('.srt', '.silence.srt')
@@ -222,9 +240,16 @@ def process_clip(clip_file, queue, language):
         os.rename(sub_segment_dir, sub_segment_dir_final)
 
         queue.put({'action': 'set_description', 'pid': os.getpid(), 'description': None})
+
         return clip_manifest_items
-    except Exception as e:
-        print(e)
+    except Exception:
+        traceback.print_exc()
+    finally:
+        if clip_audio_tensor is not None:
+            del clip_audio_tensor
+        # if torch.cuda.is_available():
+        #     torch.cuda.ipc_collect()
+        #     torch.cuda.empty_cache()
 
 
 def update(*args):
@@ -271,10 +296,13 @@ if __name__ == '__main__':
     watch_queue_thread.start()
 
     futures = []
-    for clip_file in clip_files:
-        future = pool.apply_async(process_clip, [clip_file, queue, language], callback=update)
-        futures.append(future)
-        # process_clip(clip_file, queue, language)
+    for i, clip_file in enumerate(clip_files):
+        if num_workers > 1:
+            future = pool.apply_async(process_clip, [clip_file, queue, language], callback=update)
+            futures.append(future)
+        else:
+            process_clip(clip_file, queue, language)
+            update()
 
     pool.close()
     pool.join()

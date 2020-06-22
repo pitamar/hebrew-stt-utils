@@ -7,6 +7,7 @@ matplotlib==3.2.1
 numpy==1.18.4
 pycparser==2.20
 pydub==0.23.1
+pynvml==8.0.4
 pyparsing==2.4.7
 pysrt==1.1.2
 python-dateutil==2.8.1
