@@ -77,6 +77,8 @@ def filter_sub_text(str, language):
     #     return None
 
     result = re.sub(r'\(' + r'[^\)]+' r'\)', '', result)  # Remove text in parenthesis
+    result = re.sub(r'\[' + r'[^\]]+' r'\]', '', result)  # Remove text in brackets
+    result = re.sub(r'\{' + r'[^\}]+' r'\}', '', result)  # Remove text in curly brackets
     result = re.sub(r'\s+', ' ', result)
     result = language.filter_text(result)
     result = re.sub(r'\s+', ' ', result)
