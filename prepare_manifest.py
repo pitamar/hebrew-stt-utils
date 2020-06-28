@@ -30,7 +30,7 @@ args = parser.parse_args()
 
 num_workers = args.workers
 language_code = args.language
-clip_formats = ('webm', 'm4a')
+clip_formats = ('webm', 'm4a', 'mp4')
 out_path = 'manifest'
 segments_path = os.path.join(out_path, 'segment-clips')
 merge_clips_threshold = 2000  # 2 seconds

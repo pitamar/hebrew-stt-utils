@@ -10,13 +10,15 @@ from utils import suppress_stdout
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--retries', type=int, default=3)
-    parser.add_argument('--lang', type=str, default='en')
+    parser.add_argument('--lang', type=str, default='en,en-US,en-GB,en-CA,en-AU')
     parser.add_argument('--proxy', type=str, default=None)
     args = parser.parse_args()
 
     num_tries = args.retries
-    subtitles_lang = args.lang
+    subtitles_langs = args.lang.split(',')
     proxy = args.proxy
+
+    print('Downloading subtitles for languages:', subtitles_langs)
 
     ydl_opts = {
         'format': 'bestaudio/best',
@@ -30,7 +32,6 @@ if __name__ == '__main__':
         # ],
         'keepvideo': True,
         'writesubtitles': True,
-        'subtitleslangs': [subtitles_lang],
         'extract_flat': True,
         # 'debug_printtraffic': True,
         'socket_timeout': 10,
@@ -70,24 +71,35 @@ if __name__ == '__main__':
                     try:
                         url = f'https://youtube.com/watch?v={id}'
 
-                        if os.path.exists(os.path.join('data', id, f'clip.{subtitles_lang}.srt')):
+                        if any([os.path.exists(os.path.join('data', id, f'clip.{subtitles_lang}.srt')) for subtitles_lang in subtitles_langs]):
                             pass
                             # log(f'SRT file for {id} exists. Skipping')
                         elif os.path.exists(os.path.join('data', id, '.no-subtitles')):
                             log(f'No subtitles exist for {id}. Skipping')
+                        elif os.path.exists(os.path.join('data', id, '.inaccessible')):
+                            log(f'Video {id} is not accessible. Skipping')
                         else:
                             # log(f'Retrieveing clip {id} from {url}')
                             try:
                                 result = ydl.extract_info(url, download=False)
                             except (youtube_dl.utils.ExtractorError, youtube_dl.utils.DownloadError) as e:
                                 log(f'Could not extract video information for {url}: {e}')
+
+                                if 'This video is private.' in str(e):
+                                    os.makedirs(os.path.join('data', id), exist_ok=True)
+                                    with open(os.path.join('data', id, '.inaccessible'), 'w') as f:
+                                        f.write(str(e))
+
                                 continue
 
-                            if subtitles_lang in result['subtitles']:
+                            # Find first subtitle video has out of provided list
+                            found_subtitles = next(filter(lambda available_lang: available_lang.lower() in [x.lower() for x in subtitles_langs], result['subtitles']), None)
+                            if found_subtitles is not None:
                                 entry_url = result['webpage_url']
 
                                 for i in range(num_tries):
                                     try:
+                                        ydl.params['subtitleslangs'] = [found_subtitles]
                                         ydl.download([entry_url])
                                         break
                                     except youtube_dl.utils.DownloadError as e:
@@ -103,10 +115,12 @@ if __name__ == '__main__':
 
                                 log(f'Could not find subtitles for {id}!')
 
+                        for subtitles_lang in subtitles_langs:
                             vtt_path = os.path.join('data', id, f'clip.{subtitles_lang}.vtt')
                             if os.path.exists(vtt_path):
                                 with suppress_stdout():
                                     vtt_to_srt(vtt_path)
+
                     finally:
                         playlist_pbar.update()
             finally:
