@@ -24,6 +24,7 @@ torch.multiprocessing.set_start_method('spawn', force=True)
 parser = ArgumentParser()
 parser.add_argument('--workers', help='Number of processes to run concurrently', type=int, default=1)
 parser.add_argument('--language', help='Number of processes to run concurrently', type=str, default='iw')
+parser.add_argument('--language_locales', help='Number of processes to run concurrently', type=str, default=None)
 parser.add_argument('--sample-rate', help='A specific output sample rate', type=int, default=None)
 
 args = parser.parse_args()
@@ -31,6 +32,7 @@ args = parser.parse_args()
 
 num_workers = args.workers
 language_code = args.language
+language_locales = [language_code] if args.language_locales is None else args.language_locales.split(',')
 clip_formats = ('webm', 'm4a', 'mp4')
 out_path = 'manifest'
 segments_path = os.path.join(out_path, 'segment-clips')
@@ -94,9 +96,10 @@ def process_clip(clip_file, queue, language):
         if clip_id in clips_blacklist:
             return []
 
-        srt_file = clip_file.replace(f'.{clip_format}', f'.{language_code}.srt')
+        possible_srt_files = [clip_file.replace(f'.{clip_format}', f'.{locale}.srt') for locale in language_locales]
+        srt_file = next(filter(lambda possible_srt_file: os.path.exists(possible_srt_file), possible_srt_files), None)
 
-        if not os.path.exists(srt_file):
+        if srt_file is None:
             print(f'Could not find {srt_file}')
             return []
 
