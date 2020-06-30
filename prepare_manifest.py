@@ -16,7 +16,8 @@ from subtitles_align import align_subs_by_clip_silences, create_sub_for_silence_
 import pynvml
 import traceback
 import time
-from utils import srt_to_audacity_labels
+from utils import srt_to_audacity_labels, filter_sub_text
+
 
 torch.multiprocessing.set_start_method('spawn', force=True)
 
@@ -66,28 +67,6 @@ if overwrite:
 
 os.makedirs(out_path, exist_ok=True)
 os.makedirs(segments_path, exist_ok=True)
-
-
-def filter_sub_text(str, language):
-    result = str
-
-    # Reject strings with an english letter in it
-    # match = re.search(r'[a-zA-Z]', str)
-    # if match is not None:
-    #     return None
-
-    result = re.sub(r'\(' + r'[^\)]+' r'\)', '', result)  # Remove text in parenthesis
-    result = re.sub(r'\[' + r'[^\]]+' r'\]', '', result)  # Remove text in brackets
-    result = re.sub(r'\{' + r'[^\}]+' r'\}', '', result)  # Remove text in curly brackets
-    result = re.sub(r'\s+', ' ', result)
-    result = language.filter_text(result)
-    result = re.sub(r'\s+', ' ', result)
-    result = result.strip()
-
-    if result == '':
-        return None
-
-    return result
 
 
 def process_clip(clip_file, queue, language):

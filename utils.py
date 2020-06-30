@@ -1,8 +1,10 @@
+import re
 from contextlib import contextmanager
 import sys
 import os
 import pysrt
 import codecs
+
 
 @contextmanager
 def suppress_stdout():
@@ -26,3 +28,29 @@ def srt_to_audacity_labels(srt_file_path, output_file_path):
         output.write("%.6f\t%.6f\t%s\n" % (start, end, s.text.replace('\n', ' \\\\ ')))
 
     output.close()
+
+
+def filter_sub_text(text, language):
+    result = text
+
+    # Reject strings with an english letter in it
+    # match = re.search(r'[a-zA-Z]', str)
+    # if match is not None:
+    #     return None
+
+    result = result.lower()
+    result = re.sub(r'&[^&\;]{2,8}\;', '', result)  # Reemove HTML entities
+    result = re.sub(r'\(' + r'[^\)]+' r'\)', '', result)  # Remove text in parenthesis
+    result = re.sub(r'\[' + r'[^\]]+' r'\]', '', result)  # Remove text in brackets
+    result = re.sub(r'\{' + r'[^\}]+' r'\}', '', result)  # Remove text in curly brackets
+    result = re.sub(r'\<' + r'[^\>]+' r'\}', '', result)  # Remove text in triangular brackets
+    result = re.sub(r'\s+', ' ', result)
+    result = language.filter_text(result)
+    result = re.sub(r'\s+', ' ', result)
+    result = result.strip()
+
+    if result == '':
+        return None
+
+    return result
+
