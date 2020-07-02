@@ -96,18 +96,18 @@ def process_clip(clip_file, queue, language):
         if clip_id in clips_blacklist:
             return []
 
+        sub_segment_dir_final = os.path.join(segments_path, clip_id)
+        if os.path.exists(os.path.join(sub_segment_dir_final, 'clip_manifest.json')):
+            with open(os.path.join(sub_segment_dir_final, 'clip_manifest.json')) as f:
+                clip_manifest = json.load(f)
+                return clip_manifest
+
         possible_srt_files = [clip_file.replace(f'.{clip_format}', f'.{locale}.srt') for locale in language_locales]
         srt_file = next(filter(lambda possible_srt_file: os.path.exists(possible_srt_file), possible_srt_files), None)
 
         if srt_file is None:
             print(f'Could not find {srt_file}')
             return []
-
-        sub_segment_dir_final = os.path.join(segments_path, clip_id)
-        if os.path.exists(os.path.join(sub_segment_dir_final, 'clip_manifest.json')):
-            with open(os.path.join(sub_segment_dir_final, 'clip_manifest.json')) as f:
-                clip_manifest = json.load(f)
-                return clip_manifest
 
         queue.put({'action': 'set_description', 'pid': os.getpid(), 'description': f'{device_name} {clip_id}'})
 
@@ -280,12 +280,14 @@ if __name__ == '__main__':
     watch_queue_thread.start()
 
     futures = []
+    results = []
     for i, clip_file in enumerate(clip_files):
         if num_workers > 1:
             future = pool.apply_async(process_clip, [clip_file, queue, language], callback=update)
             futures.append(future)
         else:
-            process_clip(clip_file, queue, language)
+            result = process_clip(clip_file, queue, language)
+            results.append(result)
             update()
 
     pool.close()
@@ -294,9 +296,14 @@ if __name__ == '__main__':
     queue.put({'action': 'quit'})
     watch_queue_thread.join()
 
-    manifest = []
     for future in futures:
-        manifest.extend(future.get())
+        result = future.get()
+        results.append(result)
+
+    manifest = []
+    for result in results:
+        if result is not None:
+            manifest.extend(result)
 
     with open(os.path.join(out_path, 'manifest.json'), 'w') as f:
         json.dump(manifest, f, ensure_ascii=False, indent=True)

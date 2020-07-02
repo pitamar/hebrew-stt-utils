@@ -3,9 +3,10 @@ import pysrt
 from utils import filter_sub_text
 from languages import LanguageEnglish, LanguageHebrew
 from argparse import ArgumentParser
+from tqdm import tqdm
 
 parser = ArgumentParser()
-parser.add_argument('--language', help='Number of processes to run concurrently', type=str, default='en')
+parser.add_argument('--language', help='Language of expected subtitles. Used for cleaning the outputs.', type=str, default='en')
 parser.add_argument('--output', help='Output path for corpus to be written in', type=str)
 parser.add_argument('--input_dir', help='Input directory containing SRT files to collect', type=str)
 
@@ -29,8 +30,8 @@ def transform(t):
     return result
 
 
-srt_paths = glob(f'{input_dir_path}/**/*.srt', recursive=True)
-srt_subs = (pysrt.open(srt_path) for srt_path in srt_paths)
+srt_paths = tqdm(glob(f'{input_dir_path}/**/*.srt', recursive=True))
+srt_subs = tqdm(pysrt.open(srt_path) for srt_path in srt_paths)
 sub_texts = (sub.text for subs in srt_subs for sub in subs)
 
 transformed_texts = (transform(t) for t in sub_texts)
