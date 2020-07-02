@@ -1,7 +1,7 @@
 from glob import glob
 import pysrt
 from utils import filter_sub_text
-from languages import LanguageEnglish, LanguageHebrew
+from languages import languages
 from argparse import ArgumentParser
 from tqdm import tqdm
 
@@ -30,15 +30,8 @@ if __name__ == '__main__':
     }
 
 
-    languages = {
-        'en': LanguageEnglish(),
-        'iw': LanguageHebrew(),
-    }
-
-
-
     parser = ArgumentParser()
-    parser.add_argument('--language', help='Language of expected subtitles. Used for cleaning the outputs.', type=str, default='en')
+    parser.add_argument('--language', help='Language of expected subtitles. Used for cleaning the outputs.', choices=languages.keys(), default='en')
     parser.add_argument('--output', help='Output path for corpus to be written in', type=str)
     parser.add_argument('--input_dir', help='Input directory containing SRT files to collect', type=str)
     parser.add_argument('--input_type', help='Either SRT files or text files', choices=file_loaders.keys())

@@ -11,7 +11,7 @@ import yaml
 from argparse import ArgumentParser
 import torch
 import torchaudio
-from languages import LanguageEnglish, LanguageHebrew
+from languages import languages
 from subtitles_align import align_subs_by_clip_silences, create_sub_for_silence_points
 import pynvml
 import traceback
@@ -21,9 +21,10 @@ from utils import srt_to_audacity_labels, filter_sub_text
 
 torch.multiprocessing.set_start_method('spawn', force=True)
 
+
 parser = ArgumentParser()
 parser.add_argument('--workers', help='Number of processes to run concurrently', type=int, default=1)
-parser.add_argument('--language', help='Number of processes to run concurrently', type=str, default='iw')
+parser.add_argument('--language', help='Language of expected subtitles. Used for cleaning the outputs.', choices=languages.keys(), default='en')
 parser.add_argument('--language_locales', help='Number of processes to run concurrently', type=str, default=None)
 parser.add_argument('--sample-rate', help='A specific output sample rate', type=int, default=None)
 
@@ -43,12 +44,7 @@ output_sample_rate = args.sample_rate
 overwrite = False
 target_sample_rate = 16000
 
-if language_code == 'en':
-    language = LanguageEnglish()
-elif language_code == 'iw':
-    language = LanguageHebrew()
-else:
-    raise Exception(f'Unknown language {language_code}')
+language = languages[language_code]
 
 segment_padding = {
     'start': 0,

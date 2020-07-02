@@ -46,3 +46,5 @@ class LanguageEnglish(Language):
         result = re.sub(r"[^a-zA-Z' 0-9]", '', text)
         return result
 
+languages = {lang.name: lang for lang in [LanguageEnglish(), LanguageHebrew()]}
+
