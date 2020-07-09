@@ -24,7 +24,7 @@ def handler(xml_file, language):
             sentences.append(None)
             continue
 
-        filtered_sentence = sentence  # filter_sub_text(sentence, language)
+        filtered_sentence = filter_sub_text(sentence, language)
         sentences.append(filtered_sentence)
 
     return sentences

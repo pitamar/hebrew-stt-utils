@@ -28,7 +28,14 @@ class LanguageHebrew(Language):
         ]
 
     def filter_text(self, text):
-        result = re.sub(r"[^אבגדהוזחטיכךלמםנןסעפףצץקרשת' \.,?0-9]", '', text)
+        result = text
+        result = re.sub(r"[^אבגדהוזחטיכךלמםנןסעפףצץקרשת' \.,?0-9]", '', result)
+        result = re.sub(r"[\.,?0-9]", '', result)
+        trans = str.maketrans(
+            'ךםןףץ',
+            'כמנפצ',
+        )
+        result = result.translate(trans)
         return result
 
 
