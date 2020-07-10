@@ -9,11 +9,13 @@ from utils import suppress_stdout
 
 if __name__ == '__main__':
     parser = ArgumentParser()
+    parser.add_argument('--input', type=str)
     parser.add_argument('--retries', type=int, default=3)
     parser.add_argument('--lang', type=str, default='en,en-US,en-GB,en-CA,en-AU')
     parser.add_argument('--proxy', type=str, default=None)
     args = parser.parse_args()
 
+    input_path = args.input
     num_tries = args.retries
     subtitles_langs = args.lang.split(',')
     proxy = args.proxy
@@ -39,7 +41,7 @@ if __name__ == '__main__':
         'proxy': proxy,
     }
 
-    with open('inputs.yaml') as f:
+    with open(input_path) as f:
         inputs = yaml.safe_load(f)
 
     def log(obj):
