@@ -7,6 +7,9 @@ import math
 
 
 class LanguageHebrew(Language):
+    def __init__(self):
+        self.number_transformer = NumberTransformer()
+
     @property
     def name(self):
         return 'iw'
@@ -21,8 +24,11 @@ class LanguageHebrew(Language):
 
     def filter_text(self, text):
         result = text
-        result = re.sub(r"[^אבגדהוזחטיכךלמםנןסעפףצץקרשת' \.,?0-9]", '', result)
-        result = re.sub(r"[\.,?0-9]", '', result)
+        numeric_chars = r'\.?0-9\\\/\-'
+        alphabet = 'אבגדהוזחטיכךלמםנןסעפףצץקרשת'
+        result = re.sub(rf"[^{numeric_chars},' {alphabet}]", '', result)
+        result = self.number_transformer.transform_text(result)
+        result = re.sub(rf'[{numeric_chars}]', '', result)
         trans = str.maketrans(
             'ךםןףץ',
             'כמנפצ',

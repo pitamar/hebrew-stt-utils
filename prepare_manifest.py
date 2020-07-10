@@ -96,6 +96,9 @@ def process_clip(clip_file, queue, language):
         if os.path.exists(os.path.join(sub_segment_dir_final, 'clip_manifest.json')):
             with open(os.path.join(sub_segment_dir_final, 'clip_manifest.json')) as f:
                 clip_manifest = json.load(f)
+
+                clip_manifest = [{**x, 'text': filter_sub_text(' '.join(x['acc_sub_texts']), language)} for x in clip_manifest]
+
                 return clip_manifest
 
         possible_srt_files = [clip_file.replace(f'.{clip_format}', f'.{locale}.srt') for locale in language_locales]
